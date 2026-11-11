@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#ddd3c9">
+<meta name="mobile-web-app-capable" content="yes">
+<title>Kitty Manager</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <div id="date">&nbsp;</div>
+  <div id="clock">&nbsp;</div>
+  <button id="historyBtn" class="btn small">LOG</button>
+</header>
+
+<canvas id="garden" aria-hidden="true"></canvas>
+
+<main id="panels"></main>
+
+<div id="history" hidden>
+  <div class="sheet">
+    <h2>LAST 7 DAYS</h2>
+    <table id="historyTable"></table>
+    <button id="historyClose" class="btn">CLOSE</button>
+  </div>
+</div>
+
+<template id="panelTpl">
+  <section class="panel">
+    <div class="top">
+      <canvas class="portrait" width="80" height="64"></canvas>
+      <div class="who">
+        <h1 class="name"></h1>
+        <div class="last"></div>
+      </div>
+    </div>
+    <div class="count"><span class="num"></span><span class="unit"></span></div>
+    <div class="pouches"></div>
+    <button class="btn feed"><span class="big">+ HALF</span><span>POUCH</span></button>
+    <button class="btn small undo">UNDO</button>
+  </section>
+</template>
+
+<script src="sprites.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
