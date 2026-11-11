@@ -6,7 +6,8 @@ An always-on feeding log for Chuchi and Diego, made for a spare Android phone.
 - Today's total, last-fed time and how long ago per cat; resets itself at midnight
 - **LOG** shows the last 7 days and every feed logged today
 - Dims itself at night (22:00–07:00) after 3 idle minutes; the first tap just wakes it
-- Pixel Chuchi and Diego wander the screen (tap them, or feed them, for a hop)
+- Pixel Chuchi and Diego wander a pixel version of the living room (tap them, or feed them, for a hop)
+- Day and night looks: **AUTO** switches to night at 19:00 and back at 07:00; tap it to force **DAY** or **NIGHT**
 - Keeps the screen awake while open, and works offline once loaded
 
 It is a plain static web app (no build step). The log is stored on the phone itself.
@@ -30,6 +31,7 @@ Then open http://localhost:8000.
 
 - `index.html`, `style.css`, `app.js` – the app
 - `sprites.js` – the pixel-art cats and their colours
+- `room.js` – the living-room backdrop (wall, floor, furniture) in day and night colours
 - `sw.js`, `manifest.webmanifest`, `icons/` – install + offline support
 - `tools/make-icons.js` – regenerates the icons from the sprites
 - `fonts/` – Press Start 2P (SIL Open Font License)

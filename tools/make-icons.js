@@ -15,7 +15,7 @@ const sprites = fs.readFileSync(path.join(root, 'sprites.js'), 'utf8');
     await page.setContent(`<body style="margin:0"><canvas id="c" width="${size}" height="${size}"></canvas>
       <script>${sprites}
         const ctx = document.getElementById('c').getContext('2d');
-        ctx.fillStyle = '#ddd3c9';
+        ctx.fillStyle = '#b9c0a6';
         ctx.fillRect(0, 0, ${size}, ${size});
         const s = ${size} / 32;                       // 20x16 sprite inside the maskable safe zone
         drawSprite(ctx, SPRITES.sit, PALETTES.diego, 6 * s, 8 * s, s);

@@ -136,6 +136,7 @@ function tick() {
   document.getElementById('date').textContent =
     now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase();
   document.getElementById('clock').textContent = timeText(now);
+  applyTheme();
   render(); // also rolls over to a fresh day at midnight and refreshes "ago" times
   updateDim();
 }
@@ -180,6 +181,14 @@ const gctx = garden.getContext('2d');
 const SPRITE_W = 20;
 let scale = 4;
 let placed = false;
+let floorY = 0;                                   // where the wall meets the floor
+const roomCanvas = document.createElement('canvas'); // the room is painted once, then reused each frame
+
+function paintRoom() {
+  roomCanvas.width = garden.width;
+  roomCanvas.height = garden.height;
+  drawRoom(roomCanvas.getContext('2d'), garden.width, garden.height, floorY, scale, isNight);
+}
 
 const roamers = CATS.map((cat, i) => ({
   id: cat.id,
@@ -197,6 +206,8 @@ function resizeGarden() {
   garden.width = Math.max(1, Math.round(r.width));
   garden.height = Math.max(1, Math.round(r.height));
   scale = Math.max(2, Math.min(5, Math.floor(Math.min(r.width / 70, r.height / 34))));
+  floorY = Math.round(garden.height * 0.52);
+  paintRoom();
   if (!placed && r.width > 50) {
     // first real layout: spread the cats out
     placed = true;
@@ -214,7 +225,8 @@ function bounds() {
   const w = SPRITE_W * scale;
   return {
     minX: 4, maxX: Math.max(4, garden.width - w - 4),
-    minY: 14 * scale, maxY: Math.max(14 * scale, garden.height - 18 * scale),
+    // cats stay on the floorboards (y is the top of the sprite, feet are 16px lower)
+    minY: floorY - 13 * scale, maxY: Math.max(floorY - 13 * scale, garden.height - 18 * scale),
   };
 }
 
@@ -272,7 +284,7 @@ function drawCat(c, now) {
   const feetY = Math.round(c.y) + 16 * scale; // baseline shared by all poses
   const x = Math.round(c.x);
 
-  gctx.fillStyle = '#c4b8ac';
+  gctx.fillStyle = isNight ? 'rgba(0, 0, 0, .4)' : 'rgba(60, 35, 10, .25)';
   gctx.beginPath();
   gctx.ellipse(x + w / 2, feetY, w * 0.48, 2.2 * scale, 0, 0, Math.PI * 2);
   gctx.fill();
@@ -296,6 +308,7 @@ function frame(now) {
   const dt = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
   gctx.clearRect(0, 0, garden.width, garden.height);
+  gctx.drawImage(roomCanvas, 0, 0);
   for (const c of roamers) step(c, now, dt);
   for (const c of [...roamers].sort((a, b) => a.y - b.y)) drawCat(c, now);
 }
@@ -325,6 +338,33 @@ async function keepAwake() {
 }
 document.addEventListener('visibilitychange', () => { keepAwake(); tick(); });
 document.addEventListener('pointerdown', () => { if (!wakeLock) keepAwake(); });
+
+// ---------- day / night theme ----------
+// AUTO follows the clock; the header button cycles AUTO -> DAY -> NIGHT.
+
+const THEME_KEY = 'kittymanager.theme';
+const THEME_NIGHT_START = 19, THEME_NIGHT_END = 7;
+const themeBtn = document.getElementById('themeBtn');
+let themeMode = 'auto';
+try { themeMode = localStorage.getItem(THEME_KEY) || 'auto'; } catch (e) { /* storage unavailable */ }
+let isNight = false;
+
+function applyTheme() {
+  const h = new Date().getHours();
+  const night = themeMode === 'auto' ? (h >= THEME_NIGHT_START || h < THEME_NIGHT_END) : themeMode === 'night';
+  themeBtn.textContent = themeMode.toUpperCase();
+  if (night === isNight && document.body.classList.contains('night') === night) return;
+  isNight = night;
+  document.body.classList.toggle('night', night);
+  document.querySelector('meta[name=theme-color]').content = night ? '#3b4337' : '#b9c0a6';
+  if (garden.width > 1) paintRoom();
+}
+
+themeBtn.addEventListener('click', () => {
+  themeMode = { auto: 'day', day: 'night', night: 'auto' }[themeMode] || 'auto';
+  try { localStorage.setItem(THEME_KEY, themeMode); } catch (e) { /* storage unavailable */ }
+  applyTheme();
+});
 
 // ---------- night dimming ----------
 // The screen is on all day, so at night it dims after a few idle minutes.
