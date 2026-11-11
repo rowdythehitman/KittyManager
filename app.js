@@ -8,13 +8,21 @@ const STORE_KEY = 'kittymanager.v1';
 const KEEP_DAYS = 60;
 
 // ---------- storage ----------
-// { days: { 'YYYY-MM-DD': { chuchi: [timestamp, ...], diego: [...] } } }
-// Each timestamp is one half pouch.
+// { days: { 'YYYY-MM-DD': { chuchi: [{ t: timestamp, n: halves }, ...], diego: [...] } } }
+// One entry per button press; n is 1 for a half pouch, 2 for a full one.
 
 function load() {
   try {
     const data = JSON.parse(localStorage.getItem(STORE_KEY));
-    if (data && data.days) return data;
+    if (data && data.days) {
+      // v1 logs stored a bare timestamp per half pouch
+      for (const day of Object.values(data.days)) {
+        for (const id of Object.keys(day)) {
+          day[id] = day[id].map((e) => (typeof e === 'number' ? { t: e, n: 1 } : e));
+        }
+      }
+      return data;
+    }
   } catch (e) { /* fall through to a fresh log */ }
   return { days: {} };
 }
@@ -35,6 +43,10 @@ function feeds(catId, key = dayKey()) {
   return day[catId] || (day[catId] = []);
 }
 
+function halvesOf(list) {
+  return list.reduce((sum, e) => sum + e.n, 0);
+}
+
 const state = load();
 let shownDay = dayKey();
 
@@ -50,6 +62,13 @@ function timeText(ts) {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+function agoText(ts) {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'JUST NOW';
+  if (mins < 60) return `${mins}M AGO`;
+  return `${Math.floor(mins / 60)}H ${mins % 60}M AGO`;
+}
+
 const panels = {};
 
 function buildPanels() {
@@ -61,7 +80,8 @@ function buildPanels() {
     el.querySelector('.name').textContent = cat.name;
     const pc = el.querySelector('.portrait').getContext('2d');
     drawSprite(pc, SPRITES.sit, PALETTES[cat.id], 0, 0, 4);
-    el.querySelector('.feed').addEventListener('click', () => feed(cat.id));
+    el.querySelector('.feed.half').addEventListener('click', () => feed(cat.id, 1));
+    el.querySelector('.feed.full').addEventListener('click', () => feed(cat.id, 2));
     el.querySelector('.undo').addEventListener('click', () => undo(cat.id));
     host.appendChild(el);
     panels[cat.id] = el;
@@ -73,11 +93,13 @@ function render() {
   for (const cat of CATS) {
     const el = panels[cat.id];
     const list = feeds(cat.id);
-    const halves = list.length;
+    const halves = halvesOf(list);
+    const last = list[list.length - 1];
     el.querySelector('.num').textContent = pouchText(halves);
     el.querySelector('.unit').textContent = halves === 2 ? 'POUCH TODAY' : 'POUCHES TODAY';
-    el.querySelector('.last').textContent = halves ? `LAST FED ${timeText(list[halves - 1])}` : 'NOT FED YET';
-    el.querySelector('.undo').disabled = !halves;
+    el.querySelector('.last').textContent = last ? `FED ${timeText(last.t)}` : 'NOT FED YET';
+    el.querySelector('.ago').textContent = last ? agoText(last.t) : '';
+    el.querySelector('.undo').disabled = !last;
 
     const box = el.querySelector('.pouches');
     box.textContent = '';
@@ -89,8 +111,8 @@ function render() {
   }
 }
 
-function feed(catId) {
-  feeds(catId).push(Date.now());
+function feed(catId, halves) {
+  feeds(catId).push({ t: Date.now(), n: halves });
   save();
   render();
   const el = panels[catId];
@@ -114,7 +136,8 @@ function tick() {
   document.getElementById('date').textContent =
     now.toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' }).toUpperCase();
   document.getElementById('clock').textContent = timeText(now);
-  if (dayKey(now) !== shownDay) render();
+  render(); // also rolls over to a fresh day at midnight and refreshes "ago" times
+  updateDim();
 }
 
 // ---------- history ----------
@@ -126,12 +149,27 @@ function showHistory() {
     const key = dayKey(d);
     const label = i === 0 ? 'TODAY'
       : d.toLocaleDateString([], { weekday: 'short', day: 'numeric' }).toUpperCase();
-    const cells = CATS.map((c) => `<td>${pouchText(((state.days[key] || {})[c.id] || []).length)}</td>`);
+    const cells = CATS.map((c) => `<td>${pouchText(halvesOf((state.days[key] || {})[c.id] || []))}</td>`);
     rows.push(`<tr><td>${label}</td>${cells.join('')}</tr>`);
     d.setDate(d.getDate() - 1);
   }
   document.getElementById('historyTable').innerHTML =
     `<thead><tr><th></th>${CATS.map((c) => `<th>${c.name}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody>`;
+
+  const today = [];
+  for (const c of CATS) {
+    for (const e of feeds(c.id)) today.push({ t: e.t, text: `${c.name} ${e.n === 2 ? 'FULL' : 'HALF'}` });
+  }
+  today.sort((a, b) => a.t - b.t);
+  const list = document.getElementById('todayList');
+  list.textContent = '';
+  for (const e of today) {
+    const li = document.createElement('li');
+    li.textContent = `${timeText(e.t)}  ${e.text}`;
+    list.appendChild(li);
+  }
+  if (!today.length) list.innerHTML = '<li>NOTHING YET</li>';
+
   document.getElementById('history').hidden = false;
 }
 
@@ -287,6 +325,22 @@ async function keepAwake() {
 }
 document.addEventListener('visibilitychange', () => { keepAwake(); tick(); });
 document.addEventListener('pointerdown', () => { if (!wakeLock) keepAwake(); });
+
+// ---------- night dimming ----------
+// The screen is on all day, so at night it dims after a few idle minutes.
+// The first tap only wakes it, so nobody feeds a cat by accident in the dark.
+
+const NIGHT_START = 22, NIGHT_END = 7, IDLE_MS = 3 * 60 * 1000;
+const dim = document.getElementById('dim');
+let lastTouch = Date.now();
+
+function updateDim() {
+  const h = new Date().getHours();
+  const night = h >= NIGHT_START || h < NIGHT_END;
+  dim.hidden = !(night && Date.now() - lastTouch > IDLE_MS);
+}
+document.addEventListener('pointerdown', () => { lastTouch = Date.now(); }, true);
+dim.addEventListener('click', () => { dim.hidden = true; });
 
 // ---------- boot ----------
 

@@ -26,9 +26,13 @@
   <div class="sheet">
     <h2>LAST 7 DAYS</h2>
     <table id="historyTable"></table>
+    <h2>TODAY</h2>
+    <ul id="todayList"></ul>
     <button id="historyClose" class="btn">CLOSE</button>
   </div>
 </div>
+
+<div id="dim" hidden></div>
 
 <template id="panelTpl">
   <section class="panel">
@@ -37,11 +41,15 @@
       <div class="who">
         <h1 class="name"></h1>
         <div class="last"></div>
+        <div class="ago"></div>
       </div>
     </div>
     <div class="count"><span class="num"></span><span class="unit"></span></div>
     <div class="pouches"></div>
-    <button class="btn feed"><span class="big">+ HALF</span><span>POUCH</span></button>
+    <div class="feeds">
+      <button class="btn feed half"><i class="pouch half"></i><span>+ HALF</span></button>
+      <button class="btn feed full"><i class="pouch"></i><span>+ FULL</span></button>
+    </div>
     <button class="btn small undo">UNDO</button>
   </section>
 </template>
