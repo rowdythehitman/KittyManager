@@ -64,6 +64,12 @@ const PALETTES = {
   diego:  { K: '#000', B: '#3b3b3b', S: '#3b3b3b', W: '#3b3b3b', P: '#f2a7b5', E: '#f5a623', N: '#000', H: '#e8556d' },
 };
 
+// Dim greyscale versions for the screensaver (drawn on pure black)
+const SAVER_PALETTES = {
+  chuchi: { K: '#3f3f3f', B: '#8c8c8c', S: '#5c5c5c', W: '#adadad', P: '#a0a0a0', E: '#e6e6e6', N: '#222', H: '#9a9a9a' },
+  diego:  { K: '#767676', B: '#1c1c1c', S: '#1c1c1c', W: '#1c1c1c', P: '#555', E: '#cfcfcf', N: '#767676', H: '#9a9a9a' },
+};
+
 // Draw a sprite with its top-left at (x, y); each sprite pixel is `s` canvas pixels.
 function drawSprite(ctx, rows, pal, x, y, s, flip) {
   const w = rows[0].length;

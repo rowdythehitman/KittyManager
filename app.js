@@ -138,7 +138,7 @@ function tick() {
   document.getElementById('clock').textContent = timeText(now);
   applyTheme();
   render(); // also rolls over to a fresh day at midnight and refreshes "ago" times
-  updateDim();
+  updateSaver();
 }
 
 // ---------- history ----------
@@ -190,6 +190,10 @@ function paintRoom() {
   drawRoom(roomCanvas.getContext('2d'), garden.width, garden.height, floorY, scale, isNight);
 }
 
+// The cats live on a "stage": normally the room, or the whole screen while the screensaver is up.
+const roomStage = { ctx: gctx, w: 1, h: 1, scale: 4, minY: 0 };
+let stage = roomStage;
+
 const roamers = CATS.map((cat, i) => ({
   id: cat.id,
   x: 40 + i * 120, y: 60,
@@ -207,6 +211,8 @@ function resizeGarden() {
   garden.height = Math.max(1, Math.round(r.height));
   scale = Math.max(2, Math.min(5, Math.floor(Math.min(r.width / 70, r.height / 34))));
   floorY = Math.round(garden.height * 0.52);
+  // cats stay on the floorboards (y is the top of the sprite, feet are 16px lower)
+  Object.assign(roomStage, { w: garden.width, h: garden.height, scale, minY: floorY - 13 * scale });
   paintRoom();
   if (!placed && r.width > 50) {
     // first real layout: spread the cats out
@@ -222,11 +228,10 @@ function resizeGarden() {
 }
 
 function bounds() {
-  const w = SPRITE_W * scale;
+  const w = SPRITE_W * stage.scale;
   return {
-    minX: 4, maxX: Math.max(4, garden.width - w - 4),
-    // cats stay on the floorboards (y is the top of the sprite, feet are 16px lower)
-    minY: floorY - 13 * scale, maxY: Math.max(floorY - 13 * scale, garden.height - 18 * scale),
+    minX: 4, maxX: Math.max(4, stage.w - w - 4),
+    minY: stage.minY, maxY: Math.max(stage.minY, stage.h - 18 * stage.scale),
   };
 }
 
@@ -258,7 +263,7 @@ function step(c, now, dt) {
   }
   const dx = c.tx - c.x, dy = c.ty - c.y;
   const dist = Math.hypot(dx, dy);
-  const speed = (c.mode === 'run' ? 34 : 13) * scale * dt;
+  const speed = (c.mode === 'run' ? 34 : 13) * stage.scale * dt;
   if (dist <= speed) {
     c.x = c.tx; c.y = c.ty;
     c.mode = 'sit';
@@ -271,7 +276,8 @@ function step(c, now, dt) {
 }
 
 function drawCat(c, now) {
-  const pal = PALETTES[c.id];
+  const gctx = stage.ctx, scale = stage.scale;
+  const pal = (saverOn ? SAVER_PALETTES : PALETTES)[c.id];
   const w = SPRITE_W * scale;
   const hopT = (now - c.hopAt) / 450;
   const hop = hopT >= 0 && hopT < 1 ? Math.sin(hopT * Math.PI) * 8 * scale : 0;
@@ -284,10 +290,12 @@ function drawCat(c, now) {
   const feetY = Math.round(c.y) + 16 * scale; // baseline shared by all poses
   const x = Math.round(c.x);
 
-  gctx.fillStyle = isNight ? 'rgba(0, 0, 0, .4)' : 'rgba(60, 35, 10, .25)';
-  gctx.beginPath();
-  gctx.ellipse(x + w / 2, feetY, w * 0.48, 2.2 * scale, 0, 0, Math.PI * 2);
-  gctx.fill();
+  if (!saverOn) {
+    gctx.fillStyle = isNight ? 'rgba(0, 0, 0, .4)' : 'rgba(60, 35, 10, .25)';
+    gctx.beginPath();
+    gctx.ellipse(x + w / 2, feetY, w * 0.48, 2.2 * scale, 0, 0, Math.PI * 2);
+    gctx.fill();
+  }
 
   // sprites face right by default; the sitting pose has its tail on the right
   drawSprite(gctx, rows, pal, x, feetY - h - Math.round(hop), scale, c.facingLeft);
@@ -307,8 +315,12 @@ function frame(now) {
   if (now - lastFrame < 33) return; // ~30fps is plenty for pixel cats
   const dt = Math.min(0.1, (now - lastFrame) / 1000);
   lastFrame = now;
-  gctx.clearRect(0, 0, garden.width, garden.height);
-  gctx.drawImage(roomCanvas, 0, 0);
+  if (saverOn) {
+    drawSaverBackdrop();
+  } else {
+    gctx.clearRect(0, 0, garden.width, garden.height);
+    gctx.drawImage(roomCanvas, 0, 0);
+  }
   for (const c of roamers) step(c, now, dt);
   for (const c of [...roamers].sort((a, b) => a.y - b.y)) drawCat(c, now);
 }
@@ -366,21 +378,71 @@ themeBtn.addEventListener('click', () => {
   applyTheme();
 });
 
-// ---------- night dimming ----------
-// The screen is on all day, so at night it dims after a few idle minutes.
-// The first tap only wakes it, so nobody feeds a cat by accident in the dark.
+// ---------- screensaver ----------
+// The phone is on all day, and an OLED showing the same bright panels for hours burns in.
+// After a while idle the app cuts to a black screen with dim greyscale cats wandering about
+// and a small status block that moves to a new spot every minute, so no pixel stays lit.
+// The first tap only wakes it, so nobody feeds a cat by accident.
 
-const NIGHT_START = 22, NIGHT_END = 7, IDLE_MS = 3 * 60 * 1000;
-const dim = document.getElementById('dim');
+const SAVER_IDLE_MS = 10 * 60 * 1000;
+const SAVER_IDLE_NIGHT_MS = 3 * 60 * 1000;   // kicks in sooner late at night
+const SAVER_NIGHT_START = 22, SAVER_NIGHT_END = 7;
+const SAVER_TEXT = '#8a8a8a';
+
+const saver = document.getElementById('saver');
+const saverStage = { ctx: saver.getContext('2d'), w: 1, h: 1, scale: 4, minY: 0 };
+let saverOn = false;
 let lastTouch = Date.now();
+let saverSpot = { minute: -1, fx: 0.5, fy: 0.5 }; // where the status block sits this minute
 
-function updateDim() {
-  const h = new Date().getHours();
-  const night = h >= NIGHT_START || h < NIGHT_END;
-  dim.hidden = !(night && Date.now() - lastTouch > IDLE_MS);
+function setSaver(on) {
+  if (on === saverOn) return;
+  saverOn = on;
+  saver.hidden = !on;
+  if (on) {
+    saver.width = window.innerWidth;
+    saver.height = window.innerHeight;
+    const s = Math.max(3, Math.min(5, Math.floor(Math.min(saver.width, saver.height) / 90)));
+    Object.assign(saverStage, { w: saver.width, h: saver.height, scale: s, minY: 10 * s });
+  }
+  stage = on ? saverStage : roomStage;
+  for (const c of roamers) { clampToGarden(c); c.tx = c.x; c.ty = c.y; c.mode = 'sit'; c.until = 0; }
 }
+
+function updateSaver() {
+  const h = new Date().getHours();
+  const late = h >= SAVER_NIGHT_START || h < SAVER_NIGHT_END;
+  if (Date.now() - lastTouch > (late ? SAVER_IDLE_NIGHT_MS : SAVER_IDLE_MS)) setSaver(true);
+}
+
+function drawSaverBackdrop() {
+  const ctx = saverStage.ctx, w = saver.width, h = saver.height;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+
+  const lines = CATS.map((cat) => {
+    const list = feeds(cat.id);
+    const last = list[list.length - 1];
+    return `${cat.name} ${pouchText(halvesOf(list))}  ${last ? agoText(last.t) : 'NOT FED'}`;
+  });
+  const minute = Math.floor(Date.now() / 60000);
+  if (minute !== saverSpot.minute) saverSpot = { minute, fx: Math.random(), fy: Math.random() };
+
+  const small = w < 380 ? 9 : 10, big = 24, blockH = big + 16 + lines.length * (small + 10);
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = SAVER_TEXT;
+  ctx.font = `${small}px "Press Start 2P", monospace`;
+  const blockW = Math.max(big * 8, ...lines.map((l) => ctx.measureText(l).width));
+  const x = Math.round(12 + saverSpot.fx * Math.max(0, w - blockW - 24));
+  const y = Math.round(12 + saverSpot.fy * Math.max(0, h - blockH - 24));
+  lines.forEach((l, i) => ctx.fillText(l, x, y + big + 16 + i * (small + 10)));
+  ctx.font = `${big}px "Press Start 2P", monospace`;
+  ctx.fillText(timeText(Date.now()), x, y);
+}
+
 document.addEventListener('pointerdown', () => { lastTouch = Date.now(); }, true);
-dim.addEventListener('click', () => { dim.hidden = true; });
+saver.addEventListener('click', () => setSaver(false));
+window.addEventListener('resize', () => { if (saverOn) { setSaver(false); } });
 
 // ---------- boot ----------
 

@@ -5,7 +5,7 @@ An always-on feeding log for Chuchi and Diego, made for a spare Android phone.
 - Big **+ HALF** and **+ FULL** pouch buttons per cat, with **UNDO** for mis-taps
 - Today's total, last-fed time and how long ago per cat; resets itself at midnight
 - **LOG** shows the last 7 days and every feed logged today
-- Dims itself at night (22:00–07:00) after 3 idle minutes; the first tap just wakes it
+- OLED-friendly screensaver: after 10 idle minutes (3 between 22:00 and 07:00) it cuts to a black screen with dim greyscale cats, the time and each cat's total; the first tap just wakes it
 - Pixel Chuchi and Diego wander a pixel version of the living room (tap them, or feed them, for a hop)
 - Day and night looks: **AUTO** switches to night at 19:00 and back at 07:00; tap it to force **DAY** or **NIGHT**
 - Keeps the screen awake while open, and works offline once loaded
